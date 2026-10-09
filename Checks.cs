@@ -62,6 +62,7 @@ internal static class Checks
         File.Delete("verification-result.json");
         CheckPreferencesStorage();
         CheckUpdateSignatures();
+        CheckSelectors();
         var legacyPreferences = JsonSerializer.Deserialize<Preferences>("""{"Source":"","Target":"","Channel":0,"Latency":100,"Volume":75}""")
             ?? throw new InvalidOperationException("Legacy preferences could not be read");
         Require(legacyPreferences.SliderVolume == 750, "Legacy percentage volume was not migrated");
@@ -339,6 +340,70 @@ internal static class Checks
         bool passed = !audio || successfulRoutes > 0;
         File.WriteAllText("verification-result.json", JsonSerializer.Serialize(new { Passed = passed, AudioTest = audio, PreferencesSecurityTest = true, UpdateSignatureTest = true, UpdateFeedTest = updateFeed != null, Results = result }, new JsonSerializerOptions { WriteIndented = true }));
         Require(passed, "No audio route could be verified: devices are busy.");
+    }
+
+    [DllImport("user32.dll", EntryPoint = "SendMessageW")]
+    private static extern nint SendSelectorMessage(nint window, uint message, nint parameter, nint data);
+
+    private static void CheckSelectors()
+    {
+        bool originalTheme = Theme.IsDark;
+        try
+        {
+            foreach (bool dark in new[] { false, true })
+            {
+                Theme.SetDark(dark);
+                using var form = new Form { Font = Theme.TextFont(14), BackColor = Theme.Surface,
+                    AutoScaleMode = AutoScaleMode.Dpi, AutoScaleDimensions = new SizeF(96, 96),
+                    ShowInTaskbar = false, Opacity = 0, ClientSize = new Size(440, 160) };
+                var selector = new DeviceSelector { AccessibleName = "Selector check" };
+                selector.Items.AddRange(["Speakers & headphones", "CABLE In 16ch (VB-Audio Virtual Cable)"]);
+                selector.SelectedIndex = 0;
+                var host = MonitorFormLayout.WrapSelector(selector);
+                host.Bounds = new Rectangle(16, 16, 400, 50);
+                form.Controls.Add(host);
+                form.Show(); form.Update();
+                Require(selector.Focus(), "Styled selector cannot receive keyboard focus");
+                Require(selector.AccessibilityObject.Role == AccessibleRole.ComboBox,
+                    "Styled selector lost its native accessibility role");
+                int selectionChanges = 0;
+                selector.SelectedIndexChanged += (_, _) => selectionChanges++;
+                SendSelectorMessage(selector.Handle, 0x100, (nint)Keys.Down, 0); // WM_KEYDOWN
+                SendSelectorMessage(selector.Handle, 0x101, (nint)Keys.Down, 0); // WM_KEYUP
+                Require(selector.SelectedIndex == 1 && selectionChanges == 1,
+                    "Native keyboard navigation did not select the next item exactly once");
+                selector.DroppedDown = true;
+                Application.DoEvents();
+                Require(selector.DroppedDown, "Styled selector cannot open its native list");
+                SendSelectorMessage(selector.Handle, 0x100, (nint)Keys.Escape, 0);
+                SendSelectorMessage(selector.Handle, 0x101, (nint)Keys.Escape, 0);
+                Require(!selector.DroppedDown, "Escape did not close the native selector list");
+                selector.Update();
+                Require(host.ClientRectangle.Contains(selector.Bounds)
+                    && selector.Height >= host.Height - (int)Math.Ceiling(8 * selector.DeviceDpi / 96f),
+                    "Selector is clipped or leaves an excessive gap around its clickable field");
+                using var bitmap = new Bitmap(selector.Width, selector.Height);
+                selector.DrawToBitmap(bitmap, selector.ClientRectangle);
+                bitmap.Save($"verification-selector-{(dark ? "dark" : "light")}-focused.png", ImageFormat.Png);
+                if (dark)
+                    for (int x = Math.Max(0, bitmap.Width - (int)(32 * selector.DeviceDpi / 96f)); x < bitmap.Width - 4; x++)
+                        for (int y = 4; y < bitmap.Height - 4; y++)
+                        {
+                            Color pixel = bitmap.GetPixel(x, y);
+                            Require(pixel.R < 235 || pixel.G < 235 || pixel.B < 235,
+                                "Native white arrow chrome remains in the dark selector");
+                        }
+                selector.Enabled = false;
+                selector.DrawToBitmap(bitmap, selector.ClientRectangle);
+                bitmap.Save($"verification-selector-{(dark ? "dark" : "light")}-disabled.png", ImageFormat.Png);
+                host.Width /= 2;
+                host.PerformLayout();
+                Require(selector.Width == host.ClientSize.Width && host.ClientRectangle.Contains(selector.Bounds),
+                    "Styled selector does not fit after a narrow resize");
+                form.Close();
+            }
+        }
+        finally { Theme.SetDark(originalTheme); }
     }
 
     private static void CheckPreferencesStorage()

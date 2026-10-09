@@ -20,7 +20,7 @@ Download `VBAudioMonitor-win-Setup.exe` from [GitHub Releases](https://github.co
 
 The installed edition checks the public `Kevinlabs26/VBAudioMonitor` GitHub Releases on startup and every six hours while running. Starting with 1.2.0, full update packages require an ECDSA P-256/SHA-256 signature from the publisher key embedded in the app, in addition to Velopack's checksum verification. Package bytes are verified before Velopack extracts its updater, and cached packages are rechecked at startup and before installation. Missing, changed or wrong-key signatures are rejected. A prepared update is applied on the next launch. **Software updates** in the footer or **Check for updates** in the tray opens update status; **Install now** saves settings, stops monitoring, and restarts the app. Downloads do not stop monitoring. Network errors allow retry and do not affect audio routing.
 
-Version 1.1.0 cannot verify this new publisher key retroactively. Obtain the first 1.2.0 installation from a trusted source; that installation establishes the key for future authenticated updates. The new client rejects unsigned cached updates and downloads full packages rather than unsigned deltas.
+Version 1.1.0 cannot verify this new publisher key retroactively. Obtain the first installation of 1.2.0 or later from a trusted source; that installation establishes the key for future authenticated updates. The new client rejects unsigned cached updates and downloads full packages rather than unsigned deltas.
 
 A second instance does not apply updates while the first is running. Closing the window hides it to the tray; exit from the app or tray menu before relaunching to apply an update. A restart opens the app without automatically starting audio monitoring.
 
@@ -62,6 +62,7 @@ Browser/player → CABLE Input or CABLE In 16ch → VB Audio Monitor → Headpho
 - **Named presets:** save devices, channels, buffer, volume and pre-mute volume. Select a preset from the window or tray. Applying it stops monitoring; confirm the output and click **Start monitoring**. Saving the same name updates it; deletion requires confirmation.
 - **Read-only diagnostics:** inspect device availability, Windows volume/mute, channel format, current levels and the last error. Reports are selectable and scrollable. The check does not play test sounds or change device settings.
 - **Tray operation and themes:** closing the window keeps monitoring in the background. Double-click the tray icon to restore it. **Exit app** stops monitoring and exits. Light and dark themes are available.
+- **Themed selectors:** device, preset, channel, buffer and language selectors use a single rounded border, theme-aware arrows, and visible focus/disabled states. Native keyboard navigation and accessibility are retained.
 
 Device names, user-defined preset names and messages supplied by Windows or audio drivers retain their original text. Standard Windows message-box buttons follow the Windows display language.
 
@@ -104,7 +105,7 @@ dotnet build VBAudioMonitor.csproj -c Release
 dotnet run --project VBAudioMonitor.csproj -c Release --no-build -- --check
 
 # Verify downloading a built package from a local feed without applying it
-dotnet run --project VBAudioMonitor.csproj -c Release --no-build -- --check --update-feed .\dist\github-release\1.2.0
+dotnet run --project VBAudioMonitor.csproj -c Release --no-build -- --check --update-feed .\dist\github-release\1.2.1
 
 # Build the installer, update packages, index and portable ZIP
 powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
@@ -141,7 +142,7 @@ Third-party notices and .NET license files are included in the release folder.
 
 ### Publish a GitHub Release
 
-Build artifacts for version `1.1.0` are in `dist/github-release/1.1.0`. Create a stable GitHub Release in `Kevinlabs26/VBAudioMonitor`, use a matching tag such as `v1.1.0`, and upload **every file in that folder**. The setup executable is for new installs; the full `.nupkg` and `releases.win.json` are required for existing installs to update. Upload the generated asset manifest, compatibility index and checksum file as well. Publishing only the setup executable does not provide an update feed. Upload all assets before marking the release public; drafts and prereleases are not used by this stable update channel.
+Build artifacts for version `1.2.1` are in `dist/github-release/1.2.1`. Create a stable GitHub Release in `Kevinlabs26/VBAudioMonitor`, use the matching tag `v1.2.1`, and upload **every file in that folder**. The setup executable is for new installs; the full `.nupkg`, its detached `.nupkg.sig` and `releases.win.json` are required for existing installs to update. Upload the generated asset manifest, compatibility index and checksum file as well. Publishing only the setup executable does not provide an update feed. Upload all assets before marking the release public; drafts and prereleases are not used by this stable update channel.
 
 The build also creates `dist/VBAudioMonitor-win-x64-portable.zip` and its `.sha256` checksum, which can be attached as optional downloads. The `release-installable` folder retains your local portable settings for personal use; publish files from `dist/github-release/<version>` and the public ZIP, rather than that local folder. Generated releases, packaging tools, downloaded dependencies and checks are excluded by `.gitignore`. Local rebuilds replace that version's generated artifacts; once a version is public, increase the version instead of replacing its downloads.
 

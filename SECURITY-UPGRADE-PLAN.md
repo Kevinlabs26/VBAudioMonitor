@@ -1,6 +1,6 @@
 # Remaining security fixes
 
-Implementation decision record: after reviewing this concrete plan and its key-loss tradeoff, the developer delegated the remaining implementation decision. The runtime migration and independent update authentication are now implemented in local 1.2.0. The details below describe that selected design; public release remains a separate step.
+Historical implementation decision record: after reviewing this concrete plan and its key-loss tradeoff, the developer delegated the remaining implementation decision. The runtime migration and independent update authentication were implemented and published in 1.2.0. The details below retain that selected plan; the 1.2.1 UI patch uses the same runtime and signing identity.
 
 ## Selected runtime migration
 

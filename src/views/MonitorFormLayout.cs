@@ -59,16 +59,20 @@ internal static class MonitorFormLayout
         AutoEllipsis = true
     };
 
-    public static Panel WrapSelector(ComboBox dropDownControl)
+    public static Panel WrapSelector(DeviceSelector dropDownControl)
     {
-        var selectorPanel = new Surface
+        var selectorPanel = new Panel { BackColor = Color.Transparent, TabStop = false };
+        dropDownControl.Dock = DockStyle.None;
+        selectorPanel.Layout += (_, _) =>
         {
-            BackColor = Theme.Input,
-            CornerRadius = 7f,
-            DrawBorder = true,
-            Padding = new Padding(6, 4, 6, 4)
+            float scale = dropDownControl.DeviceDpi / 96f;
+            int chrome = dropDownControl.PreferredHeight - dropDownControl.ItemHeight;
+            dropDownControl.ItemHeight = Math.Max(dropDownControl.Font.Height + (int)Math.Round(6 * scale),
+                selectorPanel.ClientSize.Height - chrome - (int)Math.Round(4 * scale));
+            dropDownControl.SetBounds(0,
+                Math.Max(0, (selectorPanel.ClientSize.Height - dropDownControl.PreferredHeight) / 2),
+                selectorPanel.ClientSize.Width, dropDownControl.PreferredHeight);
         };
-        dropDownControl.Dock = DockStyle.Fill;
         selectorPanel.Controls.Add(dropDownControl);
         return selectorPanel;
     }
