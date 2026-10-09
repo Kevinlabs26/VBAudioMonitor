@@ -4,21 +4,19 @@ internal sealed class SignalChainView
 {
     public Panel BuildRootView(Control header, Control routeCard, Control controlCard, Control footer)
     {
-        var root = MonitorFormLayout.CreateStack(72, 16, -100, 44);
-        root.Padding = new Padding(20);
+        var root = MonitorFormLayout.CreateStack(72, 16, -100, 40);
+        root.Padding = new Padding(20, 20, 28, 28);
         root.BackColor = Theme.Background;
-        var cards = new FlowLayoutPanel
+        var viewport = new ScrollViewport
         {
             Dock = DockStyle.Fill,
-            AutoScroll = true,
-            WrapContents = false,
-            BackColor = Color.Transparent,
             Margin = Padding.Empty
         };
+        var cards = viewport.Content;
         cards.Controls.Add(routeCard);
         cards.Controls.Add(controlCard);
         MonitorFormLayout.PlaceCell(root, header, 0);
-        MonitorFormLayout.PlaceCell(root, cards, 2);
+        MonitorFormLayout.PlaceCell(root, viewport, 2);
         MonitorFormLayout.PlaceCell(root, footer, 3);
 
         void ArrangeHeader()
@@ -41,8 +39,8 @@ internal sealed class SignalChainView
             {
                 float scale = cards.DeviceDpi / 96f;
                 int gap = (int)Math.Round(20 * scale);
-                int available = Math.Max(1, cards.ClientSize.Width - SystemInformation.VerticalScrollBarWidth);
-                bool stacked = cards.ClientSize.Width / scale < 940;
+                int available = viewport.ContentWidth;
+                bool stacked = viewport.ClientSize.Width / scale < 940;
                 cards.FlowDirection = stacked ? FlowDirection.TopDown : FlowDirection.LeftToRight;
                 routeCard.Margin = stacked ? new Padding(0, 0, 0, gap) : new Padding(0, 0, gap, 0);
                 controlCard.Margin = Padding.Empty;
@@ -57,6 +55,7 @@ internal sealed class SignalChainView
 
         cards.ClientSizeChanged += (_, _) => ArrangeCards();
         cards.Layout += (_, _) => ArrangeCards();
+        viewport.ClientSizeChanged += (_, _) => ArrangeCards();
         return root;
     }
 
@@ -77,7 +76,7 @@ internal sealed class SignalChainView
         MonitorFormLayout.PlaceCell(title, MonitorFormLayout.CreateLabel("让虚拟线路的声音，回到你的耳机。", 12f), 1);
         MonitorFormLayout.PlaceCell(header, title, 0, 2);
         MonitorFormLayout.PlaceCell(header, badge, 0, 6);
-        badge.Margin = new Padding(0, 10, 0, 12);
+        badge.Margin = new Padding(0, 16, 0, 16);
 
         theme.Text = Theme.IsDark ? "浅色模式" : "深色模式";
         refresh.Text = "刷新设备";
@@ -91,7 +90,7 @@ internal sealed class SignalChainView
             MonitorFormLayout.PlaceCell(toolbar, actions[i], 0, i * 2);
         }
         MonitorFormLayout.PlaceCell(header, toolbar, 0, 4);
-        toolbar.Margin = new Padding(0, 10, 0, 12);
+        toolbar.Margin = new Padding(0, 16, 0, 16);
 
         header.ClientSizeChanged += (_, _) =>
         {
@@ -102,9 +101,10 @@ internal sealed class SignalChainView
             header.ColumnStyles[3].Width = stacked ? 0 : 16 * scale;
             header.ColumnStyles[4].Width = stacked ? 0 : 600 * scale;
             header.RowStyles[1].Height = stacked ? 52 * scale : 0;
+            badge.Margin = new Padding(0, (int)(16 * scale), 0, (int)(16 * scale));
             header.SetCellPosition(toolbar, new TableLayoutPanelCellPosition(stacked ? 0 : 4, stacked ? 1 : 0));
             header.SetColumnSpan(toolbar, stacked ? 7 : 1);
-            toolbar.Margin = stacked ? new Padding(0, 4, 0, 0) : new Padding(0, (int)(10 * scale), 0, (int)(12 * scale));
+            toolbar.Margin = stacked ? new Padding(0, (int)(6 * scale), 0, (int)(6 * scale)) : new Padding(0, (int)(16 * scale), 0, (int)(16 * scale));
             header.ResumeLayout();
         };
         return header;
@@ -115,7 +115,7 @@ internal sealed class SignalChainView
         DeviceSelector profiles, ActionButton saveProfile, ActionButton deleteProfile)
     {
         var card = new Surface { Padding = new Padding(20), MinimumSize = new Size(0, 530), AccessibleName = "音频路由" };
-        var stack = MonitorFormLayout.CreateStack(36, 44, 24, 28, 50, 26, 24, 28, 50, 26, 4, 28, 54, 24, 2, 42, 0);
+        var stack = MonitorFormLayout.CreateStack(36, 36, 24, 28, 40, 26, 24, 28, 40, 26, 4, 28, 54, 24, 2, 42, 0);
         card.Controls.Add(stack);
         var title = MonitorFormLayout.CreateColumns(-100, 8, 128, 8, 120);
         MonitorFormLayout.PlaceCell(title, MonitorFormLayout.CreateLabel("声音路由", 17f, true));
@@ -158,11 +158,11 @@ internal sealed class SignalChainView
         MonitorFormLayout.PlaceCell(stack, advancedButton, 15);
         var advanced = MonitorFormLayout.CreateStack(12, 112);
         var fields = MonitorFormLayout.CreateColumns(-50, 16, -50);
-        var channelField = MonitorFormLayout.CreateStack(30, 50, 32);
+        var channelField = MonitorFormLayout.CreateStack(30, 40, 32);
         MonitorFormLayout.PlaceCell(channelField, MonitorFormLayout.CreateLabel("监听声道", 13f, true), 0);
         MonitorFormLayout.PlaceCell(channelField, MonitorFormLayout.WrapSelector(channels), 1);
         MonitorFormLayout.PlaceCell(channelField, MonitorFormLayout.CreateLabel("通常选择声道 1 / 2", 11.5f), 2);
-        var latencyField = MonitorFormLayout.CreateStack(30, 50, 32);
+        var latencyField = MonitorFormLayout.CreateStack(30, 40, 32);
         MonitorFormLayout.PlaceCell(latencyField, MonitorFormLayout.CreateLabel("音频缓冲", 13f, true), 0);
         MonitorFormLayout.PlaceCell(latencyField, MonitorFormLayout.WrapSelector(latency), 1);
         MonitorFormLayout.PlaceCell(latencyField, MonitorFormLayout.CreateLabel("有卡顿时选 200 毫秒", 11.5f), 2);
@@ -190,7 +190,7 @@ internal sealed class SignalChainView
         Label statusTitle, Label statusMessage, Label latencyStat, Label underrun)
     {
         var card = new Surface { Padding = new Padding(20), MinimumSize = new Size(0, 530), AccessibleName = "监听控制" };
-        var stack = MonitorFormLayout.CreateStack(36, 26, 52, 44, 24, 40, 12, 50, 10, 32, 80, 12, 64);
+        var stack = MonitorFormLayout.CreateStack(36, 26, 52, 44, 24, 40, 12, 42, 10, 32, 80, 12, 64);
         card.Controls.Add(stack);
         MonitorFormLayout.PlaceCell(stack, MonitorFormLayout.CreateLabel("监听控制", 17f, true), 0);
         MonitorFormLayout.PlaceCell(stack, MonitorFormLayout.CreateLabel("调整音量只影响你的监听输出", 11.5f), 1);

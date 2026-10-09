@@ -63,6 +63,7 @@ internal static class Checks
         CheckPreferencesStorage();
         CheckUpdateSignatures();
         CheckSelectors();
+        CheckScrollbars();
         var legacyPreferences = JsonSerializer.Deserialize<Preferences>("""{"Source":"","Target":"","Channel":0,"Latency":100,"Volume":75}""")
             ?? throw new InvalidOperationException("Legacy preferences could not be read");
         Require(legacyPreferences.SliderVolume == 750, "Legacy percentage volume was not migrated");
@@ -244,7 +245,8 @@ internal static class Checks
                 $"Narrow header height does not match its required height: height={header.Height}, minimum={header.MinimumSize.Height}, toolbar={toolbar.Bounds}, root={form.Controls[0].Bounds}, dpi={form.DeviceDpi}");
             Require(routeCard.Left == controlCard.Left && routeCard.Bottom <= controlCard.Top,
                 "Minimum window size did not stack the cards without overlap");
-            var viewport = routeCard.Parent ?? throw new InvalidOperationException("Card viewport is missing");
+            var cardFlow = routeCard.Parent as FlowLayoutPanel ?? throw new InvalidOperationException("Card flow is missing");
+            var viewport = cardFlow.Parent as ScrollViewport ?? throw new InvalidOperationException("Card viewport is missing");
             foreach (Control action in new Control[] { profilePicker, saveProfile, deleteProfile })
                 Require(viewport.RectangleToScreen(viewport.ClientRectangle).Contains(action.RectangleToScreen(action.ClientRectangle)),
                     "Listening profile control is clipped in the narrow layout: " + action.AccessibleName);
@@ -278,8 +280,12 @@ internal static class Checks
                 "Advanced settings did not collapse");
             Require(routeCard.Left == controlCard.Left && routeCard.Bottom <= controlCard.Top,
                 "Collapsed advanced settings overlap the monitoring card");
-            var scrollViewport = (ScrollableControl)viewport;
+            var scrollViewport = viewport.Content;
             scrollViewport.ScrollControlIntoView(controlCard); form.Update();
+            var viewportScrollbar = viewport.Controls.Cast<Control>().Single(control => control.AccessibleRole == AccessibleRole.ScrollBar);
+            int scrollMaximum = scrollViewport.VerticalScroll.Maximum - scrollViewport.VerticalScroll.LargeChange + 1;
+            Require(viewportScrollbar.AccessibilityObject.Value == $"{-scrollViewport.AutoScrollPosition.Y}/{scrollMaximum}",
+                "Themed scrollbar did not follow programmatic native scrolling");
             Require(viewport.RectangleToScreen(viewport.ClientRectangle).Contains(master.RectangleToScreen(master.ClientRectangle)),
                 "Minimum window size cannot scroll the monitoring action into view");
             Require(viewport.RectangleToScreen(viewport.ClientRectangle).Contains(diagnostics.RectangleToScreen(diagnostics.ClientRectangle))
@@ -373,7 +379,6 @@ internal static class Checks
                 Require(selector.SelectedIndex == 1 && selectionChanges == 1,
                     "Native keyboard navigation did not select the next item exactly once");
                 selector.DroppedDown = true;
-                Application.DoEvents();
                 Require(selector.DroppedDown, "Styled selector cannot open its native list");
                 SendSelectorMessage(selector.Handle, 0x100, (nint)Keys.Escape, 0);
                 SendSelectorMessage(selector.Handle, 0x101, (nint)Keys.Escape, 0);
@@ -400,6 +405,65 @@ internal static class Checks
                 host.PerformLayout();
                 Require(selector.Width == host.ClientSize.Width && host.ClientRectangle.Contains(selector.Bounds),
                     "Styled selector does not fit after a narrow resize");
+                form.Close();
+            }
+        }
+        finally { Theme.SetDark(originalTheme); }
+    }
+
+    private static void CheckScrollbars()
+    {
+        bool originalTheme = Theme.IsDark;
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        try
+        {
+            foreach (bool dark in new[] { false, true })
+            {
+                Theme.SetDark(dark);
+                using var form = new Form { ShowInTaskbar = false, Opacity = 0,
+                    AutoScaleMode = AutoScaleMode.Dpi, AutoScaleDimensions = new SizeF(96, 96), ClientSize = new Size(320, 240) };
+                var viewport = new ScrollViewport { Dock = DockStyle.Fill };
+                viewport.Content.FlowDirection = FlowDirection.TopDown;
+                var tall = new Panel { Size = new Size(240, 1000), Margin = Padding.Empty, BackColor = Theme.Surface };
+                viewport.Content.Controls.Add(tall);
+                form.Controls.Add(viewport);
+                form.Show(); form.Update(); Application.DoEvents();
+                var bar = viewport.Controls.Cast<Control>().Single(control => control.AccessibleRole == AccessibleRole.ScrollBar);
+                Require(bar.Visible && bar.Focus(), "Overflowing viewport has no focusable themed scrollbar");
+                int maximum = viewport.Content.VerticalScroll.Maximum - viewport.Content.VerticalScroll.LargeChange + 1;
+                SendSelectorMessage(bar.Handle, 0x100, (nint)Keys.End, 0);
+                Require(-viewport.Content.AutoScrollPosition.Y == maximum, "End did not reach the native scroll limit");
+                SendSelectorMessage(bar.Handle, 0x100, (nint)Keys.Home, 0);
+                Require(viewport.Content.AutoScrollPosition.Y == 0, "Home did not return to the top");
+                int y = (int)Math.Round(10 * bar.DeviceDpi / 96f);
+                bar.GetType().GetMethod("OnMouseDown", flags)!.Invoke(bar, [new MouseEventArgs(MouseButtons.Left, 1, bar.Width / 2, y, 0)]);
+                bar.GetType().GetMethod("OnMouseMove", flags)!.Invoke(bar, [new MouseEventArgs(MouseButtons.Left, 0, bar.Width / 2, bar.Height + 50, 0)]);
+                bar.GetType().GetMethod("OnMouseUp", flags)!.Invoke(bar, [new MouseEventArgs(MouseButtons.Left, 1, bar.Width / 2, bar.Height + 50, 0)]);
+                Require(!bar.Capture && -viewport.Content.AutoScrollPosition.Y == maximum,
+                    "Dragging the thumb did not clamp at the bottom or release pointer capture");
+                viewport.Content.AutoScrollPosition = Point.Empty;
+                viewport.PerformLayout();
+                bar.GetType().GetMethod("OnMouseWheel", flags)!.Invoke(bar, [new HandledMouseEventArgs(MouseButtons.None, 0, 0, 0, -120)]);
+                if (SystemInformation.MouseWheelScrollLines != 0)
+                    Require(viewport.Content.AutoScrollPosition.Y < 0, "Wheel over the themed scrollbar did not scroll native content");
+                Require(bar.AccessibilityObject.Role == AccessibleRole.ScrollBar
+                    && bar.AccessibilityObject.Value == $"{-viewport.Content.AutoScrollPosition.Y}/{maximum}",
+                    "Scrollbar accessibility value is out of sync with native content");
+                using var bitmap = new Bitmap(viewport.Width, viewport.Height);
+                viewport.DrawToBitmap(bitmap, viewport.ClientRectangle);
+                bitmap.Save($"verification-scrollbar-{(dark ? "dark" : "light")}.png", ImageFormat.Png);
+                if (dark)
+                    for (int x = bar.Left; x < bitmap.Width; x++)
+                        for (int row = 0; row < bitmap.Height; row++)
+                        {
+                            Color pixel = bitmap.GetPixel(x, row);
+                            Require(pixel.R < 230 || pixel.G < 230 || pixel.B < 230,
+                                "Native white scrollbar leaked into the dark viewport");
+                        }
+                tall.Height = 20;
+                viewport.Content.PerformLayout(); viewport.PerformLayout(); form.Update();
+                Require(!bar.Visible && viewport.Content.AutoScrollPosition.Y == 0,
+                    "Scrollbar or scroll offset remained after content stopped overflowing");
                 form.Close();
             }
         }

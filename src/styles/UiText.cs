@@ -17,6 +17,7 @@ internal static class UiText
     {
         ["VB 音频监听"] = ("VB Audio Monitor", "VB Audio Monitor"),
         ["软件更新"] = ("Software updates", "Mise à jour"),
+        ["页面滚动"] = ("Scroll page", "Défilement de la page"),
         ["检查更新"] = ("Check for updates", "Vérifier"),
         ["安装更新"] = ("Install update", "Installer la màj"),
         ["立即安装"] = ("Install now", "Installer"),

@@ -108,6 +108,7 @@ internal static class Theme
             surfaceInstance.Invalidate();
         }
         else if (targetControl is TableLayoutPanel tablePanel) tablePanel.BackColor = isCardScope ? Surface : Background;
+        else if (targetControl is ScrollViewport viewport) viewport.ApplyTheme();
         else if (targetControl is DeviceSelector selector) selector.ApplyTheme();
         else if (targetControl is SmoothSlider slider) slider.ApplyTheme();
         else if (targetControl is LevelMeter meter) meter.ApplyTheme();
