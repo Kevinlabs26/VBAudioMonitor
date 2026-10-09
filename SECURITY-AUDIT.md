@@ -2,7 +2,7 @@
 
 ## Current remediation status — 1.2.0 security baseline
 
-**1.2.1 release preparation:** this patch updates the six shared selectors and adds native-keyboard, accessibility-role, sizing and theme-rendering regressions. Application dependencies, runtime and update-signing identity are unchanged from the 1.2.0 audit baseline. This is a UI patch, not a new full dependency/security audit.
+**1.2.2 release preparation:** this patch tightens the main window's button, selector and status-badge spacing and replaces the native scrollbar with a themed one. Application dependencies, runtime and update-signing identity are unchanged from the 1.2.0 audit baseline. This is a UI patch, not a new full dependency/security audit.
 
 The developer reviewed the runtime/signing tradeoffs and delegated the remaining implementation decision. The current application targets .NET 10 Windows Forms, uses SDK 10.0.401 and bundles .NETCore/WindowsDesktop 10.0.12. Application package versions remain NAudio.Wasapi 2.2.1, NAudio.Core 2.2.1 and Velopack 1.2.0. The dependency-free update signer adds no NuGet package. The original 94 dependency/version checks plus the three new 10.0.12 runtime entries total 97 distinct checks across the two snapshots. The sections below this continuation retain the original baseline findings/evidence and do not describe the current runtime or outstanding decision status.
 

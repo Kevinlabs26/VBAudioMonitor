@@ -105,13 +105,13 @@ dotnet build VBAudioMonitor.csproj -c Release
 dotnet run --project VBAudioMonitor.csproj -c Release --no-build -- --check
 
 # Verify downloading a built package from a local feed without applying it
-dotnet run --project VBAudioMonitor.csproj -c Release --no-build -- --check --update-feed .\dist\github-release\1.2.1
+dotnet run --project VBAudioMonitor.csproj -c Release --no-build -- --check --update-feed .\dist\github-release\1.2.2
 
 # Build the installer, update packages, index and portable ZIP
 powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
 
 # Build the next release (increase the version for every public update)
-powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -Version 1.2.1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -Version 1.2.2
 ```
 
 Checks write `verification-result.json`, device metadata and screenshots into the working directory. They cover all three languages in light/dark themes at normal/narrow window sizes, language formatting/state preservation, presets, mute memory, window resource disposal, audio-provider logic, update retries/concurrency, installed settings paths, update dialog layout, icon integrity and signed-update rejection. The signed local-feed check also changes package bytes and feed hashes together, and tests missing/oversized/cached signatures and the apply gate. They do not contact the live update feed, play audio, write user preferences, or establish real hardware playback quality or layout behavior when moving between monitors with different DPI settings. The optional `--check --audio` mode exercises actual audio routes; use it only when you intend to run a live audio check.
@@ -142,7 +142,7 @@ Third-party notices and .NET license files are included in the release folder.
 
 ### Publish a GitHub Release
 
-Build artifacts for version `1.2.1` are in `dist/github-release/1.2.1`. Create a stable GitHub Release in `Kevinlabs26/VBAudioMonitor`, use the matching tag `v1.2.1`, and upload **every file in that folder**. The setup executable is for new installs; the full `.nupkg`, its detached `.nupkg.sig` and `releases.win.json` are required for existing installs to update. Upload the generated asset manifest, compatibility index and checksum file as well. Publishing only the setup executable does not provide an update feed. Upload all assets before marking the release public; drafts and prereleases are not used by this stable update channel.
+Build artifacts for version `1.2.2` are in `dist/github-release/1.2.2`. Create a stable GitHub Release in `Kevinlabs26/VBAudioMonitor`, use the matching tag `v1.2.2`, and upload **every file in that folder**. The setup executable is for new installs; the full `.nupkg`, its detached `.nupkg.sig` and `releases.win.json` are required for existing installs to update. Upload the generated asset manifest, compatibility index and checksum file as well. Publishing only the setup executable does not provide an update feed. Upload all assets before marking the release public; drafts and prereleases are not used by this stable update channel.
 
 The build also creates `dist/VBAudioMonitor-win-x64-portable.zip` and its `.sha256` checksum, which can be attached as optional downloads. The `release-installable` folder retains your local portable settings for personal use; publish files from `dist/github-release/<version>` and the public ZIP, rather than that local folder. Generated releases, packaging tools, downloaded dependencies and checks are excluded by `.gitignore`. Local rebuilds replace that version's generated artifacts; once a version is public, increase the version instead of replacing its downloads.
 
