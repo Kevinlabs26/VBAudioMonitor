@@ -1,0 +1,13 @@
+bin/
+obj/
+.packages/
+.tools/
+release/
+release-*/
+dist/
+settings.json
+verification-*.json
+verification-*.png
+verification-*.ico
+verification-*.txt
+界面预览*.png

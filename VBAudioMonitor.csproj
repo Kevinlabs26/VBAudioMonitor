@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>VBAudioMonitor</AssemblyName>
+    <Version>1.1.0</Version>
+    <ApplicationIcon>assets\app.ico</ApplicationIcon>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <RestorePackagesPath>$(MSBuildProjectDirectory)\.packages</RestorePackagesPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="dist/**;release*/**;.tools/**" />
+    <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
+    <EmbeddedResource Include="assets\app.ico" />
+    <PackageReference Include="Velopack" Version="1.2.0" />
+  </ItemGroup>
+</Project>
