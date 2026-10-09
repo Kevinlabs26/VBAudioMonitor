@@ -1,5 +1,4 @@
 using Velopack;
-using Velopack.Sources;
 using Velopack.Locators;
 using Velopack.Logging;
 
@@ -17,8 +16,8 @@ internal sealed class AppUpdates : IDisposable
 
     public AppUpdates(UpdateManager? manager = null)
     {
-        this.manager = manager ?? new UpdateManager(new GithubSource(RepositoryUrl, null, false),
-            locator: VelopackLocator.IsCurrentSet ? VelopackLocator.Current : VelopackLocator.CreateDefaultForPlatform(logger: new NullVelopackLogger()));
+        this.manager = manager ?? new SignedUpdateManager(
+            VelopackLocator.IsCurrentSet ? VelopackLocator.Current : VelopackLocator.CreateDefaultForPlatform(logger: new NullVelopackLogger()));
         if (CanUpdate) pending = this.manager.UpdatePendingRestart;
         statusKey = pending != null ? "更新 {0} 已准备好，下次启动时自动安装。" : CanUpdate ? "当前版本：{0}" : "请安装安装版以启用自动更新。";
         statusArguments = pending != null ? [pending.Version.ToString()] : CanUpdate ? [Version] : [];
@@ -75,6 +74,7 @@ internal sealed class AppUpdates : IDisposable
     public void RestartAfterExit()
     {
         if (disposed || pending == null || IsBusy) throw new InvalidOperationException("No verified update is ready.");
+        if (manager is SignedUpdateManager signed) signed.VerifyCachedPackage(pending);
         manager.WaitExitThenApplyUpdates(pending, silent: true, restart: true);
     }
 

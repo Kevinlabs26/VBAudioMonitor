@@ -1,3 +1,5 @@
+using System.ComponentModel;
+
 namespace VBAudioMonitor;
 
 /// <summary>
@@ -15,6 +17,7 @@ internal sealed class BadgeBox : Control
         set { displayText = value ?? ""; Invalidate(); }
     }
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Color AccentColor
     {
         get => accentTone;

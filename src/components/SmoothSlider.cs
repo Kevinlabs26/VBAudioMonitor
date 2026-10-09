@@ -1,3 +1,5 @@
+using System.ComponentModel;
+
 namespace VBAudioMonitor;
 
 /// <summary>
@@ -11,6 +13,7 @@ internal sealed class SmoothSlider : Control
 
     public event EventHandler? ValueChanged;
 
+    [DefaultValue(750)]
     public int Value
     {
         get => currentValue;

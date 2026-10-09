@@ -1,3 +1,5 @@
+using System.ComponentModel;
+
 namespace VBAudioMonitor;
 
 /// <summary>
@@ -5,9 +7,9 @@ namespace VBAudioMonitor;
 /// </summary>
 internal sealed class ActionButton : Button
 {
-    public bool Primary { get; set; }
-    public bool Danger { get; set; }
-    public bool Compact { get; set; }
+    [DefaultValue(false)] public bool Primary { get; set; }
+    [DefaultValue(false)] public bool Danger { get; set; }
+    [DefaultValue(false)] public bool Compact { get; set; }
 
     private bool isHovered;
     private bool isPressed;

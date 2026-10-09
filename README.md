@@ -8,7 +8,7 @@ VB Audio Monitor is a Windows desktop utility with a shared-mode WASAPI audio re
 
 ## Requirements
 
-- Windows 10 or Windows 11, x64.
+- A supported Windows 11 release, or a supported Windows 10 LTSC/Enterprise release, x64. See [Microsoft's .NET Windows support table](https://learn.microsoft.com/en-us/dotnet/core/install/windows).
 - An installed and enabled VB-CABLE driver, or a compatible virtual playback endpoint.
 - Physical headphones or speakers.
 
@@ -18,7 +18,9 @@ The packaged executable is self-contained: you do not need to install the .NET r
 
 Download `VBAudioMonitor-win-Setup.exe` from [GitHub Releases](https://github.com/Kevinlabs26/VBAudioMonitor/releases) and double-click it. It installs for your Windows account without requiring administrator access, creates desktop/Start menu shortcuts, and adds an uninstall entry in Windows Settings. The VB-CABLE driver must still be installed separately.
 
-The installed edition checks the public `Kevinlabs26/VBAudioMonitor` GitHub Releases on startup and every six hours while running. Stable updates download in the background and are verified by Velopack. A prepared update is applied on the next launch. **Software updates** in the footer or **Check for updates** in the tray opens update status; **Install now** saves settings, stops monitoring, and restarts the app. Downloads do not stop monitoring. Network errors allow retry and do not affect audio routing.
+The installed edition checks the public `Kevinlabs26/VBAudioMonitor` GitHub Releases on startup and every six hours while running. Starting with 1.2.0, full update packages require an ECDSA P-256/SHA-256 signature from the publisher key embedded in the app, in addition to Velopack's checksum verification. Package bytes are verified before Velopack extracts its updater, and cached packages are rechecked at startup and before installation. Missing, changed or wrong-key signatures are rejected. A prepared update is applied on the next launch. **Software updates** in the footer or **Check for updates** in the tray opens update status; **Install now** saves settings, stops monitoring, and restarts the app. Downloads do not stop monitoring. Network errors allow retry and do not affect audio routing.
+
+Version 1.1.0 cannot verify this new publisher key retroactively. Obtain the first 1.2.0 installation from a trusted source; that installation establishes the key for future authenticated updates. The new client rejects unsigned cached updates and downloads full packages rather than unsigned deltas.
 
 A second instance does not apply updates while the first is running. Closing the window hides it to the tray; exit from the app or tray menu before relaunching to apply an update. A restart opens the app without automatically starting audio monitoring.
 
@@ -30,7 +32,7 @@ Download `VBAudioMonitor-win-x64-portable.zip` from GitHub Releases, extract the
 
 The public ZIP includes the English README, icon assets and dependency license notices. It excludes personal settings, saved presets, device IDs and verification output. On first use, select your own devices and language. A `settings.json` file is created beside the executable when you change settings.
 
-The executable currently has no Authenticode signature. The SHA-256 file checks download integrity; it is not a code-signing certificate.
+Setup and app executables currently have no Authenticode signature, so Windows may show an unknown-publisher/SmartScreen warning. Detached update signatures authenticate future update packages for installed 1.2.0 clients; they are separate from a Windows publisher certificate. The SHA-256 file checks download integrity and does not establish initial publisher trust.
 
 ## Quick start
 
@@ -69,6 +71,8 @@ Settings include devices, channel pair, buffer, theme, language, per-output volu
 
 The build script copies earlier portable settings into the local build folder only when it has no settings file. Public installers, update packages and ZIP downloads exclude those settings. When upgrading a portable copy manually, exit the old app and copy its `settings.json` beside the new executable before starting. Keep the old file as a backup.
 
+Settings files larger than 8 MiB are rejected before reading or replacing existing preferences. Saves use a newly created temporary file followed by an atomic rename; failed saves preserve the previous file.
+
 Only one normal instance can run at a time. A second instance displays a notice to check the taskbar or notification area. After opening the app, start monitoring manually.
 
 ## Troubleshooting
@@ -87,26 +91,35 @@ Only one normal instance can run at a time. A second instance displays a notice 
 
 ## Build and verification
 
-Development requires the .NET 8 SDK on Windows. The project uses `NAudio.Wasapi` 2.2.1 and `Velopack` 1.2.0. Audio monitoring and translations work offline; automatic updates contact GitHub.
+Development requires the .NET 10 SDK on Windows (10.0.401 or a later patch in that SDK feature band, as selected by `global.json`). The project uses `NAudio.Wasapi` 2.2.1 and `Velopack` 1.2.0; no new NuGet dependency was added for signing. Audio monitoring and translations work offline; automatic updates contact GitHub. `build.ps1` uses a workspace-local `.sdk/dotnet.exe` if present, otherwise the installed SDK. The separate vpk 1.2.0 tool currently requires a .NET 8 host on the build machine; that host is not included in the .NET 10 app and must be serviced separately.
+
+Commit `packages.lock.json` with intentional dependency changes. Release builds restore in locked mode, audit direct and transitive app packages, and reject known High/Critical NuGet advisories. The separate packaging tool has a reviewed ImageSharp exception documented in [SECURITY-AUDIT.md](SECURITY-AUDIT.md); its dependencies are not covered by the app's NuGet audit.
 
 ```powershell
 # Restore and compile
+dotnet restore VBAudioMonitor.csproj --configfile NuGet.Config --runtime win-x64 --locked-mode
 dotnet build VBAudioMonitor.csproj -c Release
 
 # Hidden UI/regression checks: no audio playback or settings writes
 dotnet run --project VBAudioMonitor.csproj -c Release --no-build -- --check
 
 # Verify downloading a built package from a local feed without applying it
-dotnet run --project VBAudioMonitor.csproj -c Release --no-build -- --check --update-feed .\dist\github-release\1.1.0
+dotnet run --project VBAudioMonitor.csproj -c Release --no-build -- --check --update-feed .\dist\github-release\1.2.0
 
 # Build the installer, update packages, index and portable ZIP
 powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
 
 # Build the next release (increase the version for every public update)
-powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -Version 1.1.1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -Version 1.2.1
 ```
 
-Checks write `verification-result.json`, device metadata and screenshots into the working directory. They cover all three languages in light/dark themes at normal/narrow window sizes, language formatting/state preservation, presets, mute memory, window resource disposal, audio-provider logic, update retries/concurrency, installed settings paths, update dialog layout and icon integrity. They do not contact the live update feed, play audio, write user preferences, or establish real hardware playback quality or layout behavior when moving between monitors with different DPI settings. The optional `--check --audio` mode exercises actual audio routes; use it only when you intend to run a live audio check.
+Checks write `verification-result.json`, device metadata and screenshots into the working directory. They cover all three languages in light/dark themes at normal/narrow window sizes, language formatting/state preservation, presets, mute memory, window resource disposal, audio-provider logic, update retries/concurrency, installed settings paths, update dialog layout, icon integrity and signed-update rejection. The signed local-feed check also changes package bytes and feed hashes together, and tests missing/oversized/cached signatures and the apply gate. They do not contact the live update feed, play audio, write user preferences, or establish real hardware playback quality or layout behavior when moving between monitors with different DPI settings. The optional `--check --audio` mode exercises actual audio routes; use it only when you intend to run a live audio check.
+
+## Release signing
+
+The release build requires the original publisher's private identity in the current Windows user's CNG store, named `Kevinlabs26.VBAudioMonitor.Updates.v1`. It is non-exportable; only `assets/update-public-key.pem` is committed and embedded. Builds fail when the identity is missing or does not match that public key. Do not generate a replacement public key to bypass the failure. Losing the Windows key store requires a separately trusted client reinstall unless a reviewed key-rotation mechanism is introduced. Keep the signing account and build inputs protected; software running as that account can request signatures even without exporting the key.
+
+The `tools/UpdateSigner` console project signs built full packages and self-verifies every signature. `build.ps1` calls it automatically. Upload **all files** from the version's `dist/github-release` folder, including each `.nupkg.sig`, plus the portable ZIP and its checksum. Never publish an unsigned folder after a signing failure, and never overwrite existing public assets under the same version.
 
 ### Translations
 
@@ -121,6 +134,7 @@ To regenerate assets from the drawing code in `Theme.DrawMark`, run this from th
 ```powershell
 dotnet run --project VBAudioMonitor.csproj -c Release -- --export-icon
 # Rebuild/publish afterwards to embed the updated ICO.
+# Review the regenerated ICO/PNG, then update their approved SHA-256 values in build.ps1.
 ```
 
 Third-party notices and .NET license files are included in the release folder.

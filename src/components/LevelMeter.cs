@@ -1,3 +1,5 @@
+using System.ComponentModel;
+
 namespace VBAudioMonitor;
 
 /// <summary>
@@ -14,6 +16,7 @@ internal sealed class LevelMeter : Control
     private bool isClipped;
     private DateTime lastClipTime;
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public float Level
     {
         get => Math.Max(leftLevel, rightLevel);

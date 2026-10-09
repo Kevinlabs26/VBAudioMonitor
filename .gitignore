@@ -11,3 +11,13 @@ verification-*.png
 verification-*.ico
 verification-*.txt
 界面预览*.png
+*.log
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.key
+*.pem
+!assets/update-public-key.pem
+.sdk/

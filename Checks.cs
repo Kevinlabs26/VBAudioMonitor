@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Security.Cryptography;
 using NAudio.CoreAudioApi;
 using NAudio.CoreAudioApi.Interfaces;
 using NAudio.Wave;
@@ -59,6 +60,8 @@ internal static class Checks
     {
         File.Delete("verification-error.txt");
         File.Delete("verification-result.json");
+        CheckPreferencesStorage();
+        CheckUpdateSignatures();
         var legacyPreferences = JsonSerializer.Deserialize<Preferences>("""{"Source":"","Target":"","Channel":0,"Latency":100,"Volume":75}""")
             ?? throw new InvalidOperationException("Legacy preferences could not be read");
         Require(legacyPreferences.SliderVolume == 750, "Legacy percentage volume was not migrated");
@@ -334,8 +337,75 @@ internal static class Checks
             }
         }
         bool passed = !audio || successfulRoutes > 0;
-        File.WriteAllText("verification-result.json", JsonSerializer.Serialize(new { Passed = passed, AudioTest = audio, UpdateFeedTest = updateFeed != null, Results = result }, new JsonSerializerOptions { WriteIndented = true }));
+        File.WriteAllText("verification-result.json", JsonSerializer.Serialize(new { Passed = passed, AudioTest = audio, PreferencesSecurityTest = true, UpdateSignatureTest = true, UpdateFeedTest = updateFeed != null, Results = result }, new JsonSerializerOptions { WriteIndented = true }));
         Require(passed, "No audio route could be verified: devices are busy.");
+    }
+
+    private static void CheckPreferencesStorage()
+    {
+        string directory = Path.Combine(Environment.CurrentDirectory, "verification-settings-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            string path = Path.Combine(directory, "settings.json");
+            var preferences = new Preferences("test-source", "test-target", 0, 100, 320, Version: 2, Language: "fr");
+            File.WriteAllText(path + ".tmp", "existing temporary file must be preserved");
+            Require(PreferencesStorage.SavePreferences(preferences, path)
+                && PreferencesStorage.LoadPreferences(path) == preferences, "Secure settings save/load lost preferences");
+            Require(File.ReadAllText(path + ".tmp") == "existing temporary file must be preserved"
+                && Directory.GetFiles(directory, "*.tmp").Length == 1, "Settings save overwrote an existing temporary file or leaked its own temporary file");
+            File.WriteAllText(path, "{broken");
+            Require(PreferencesStorage.LoadPreferences(path) == null, "Malformed settings were accepted");
+            File.WriteAllText(path, "{\"Source\":\"test\",\"Target\":\"out\",\"Channel\":0,\"Latency\":100,\"Volume\":32}", new System.Text.UTF8Encoding(true));
+            Require(PreferencesStorage.LoadPreferences(path)?.Volume == 32, "UTF-8 BOM settings stopped loading");
+            using (var oversized = new FileStream(path, FileMode.Create)) oversized.SetLength(PreferencesStorage.MaximumFileBytes + 1L);
+            Require(PreferencesStorage.LoadPreferences(path) == null, "Oversized settings were read into memory");
+            Require(PreferencesStorage.SavePreferences(preferences, path), "Valid settings did not replace a corrupt file");
+            byte[] before = File.ReadAllBytes(path);
+            Require(!PreferencesStorage.SavePreferences(preferences with { Source = new string('x', PreferencesStorage.MaximumFileBytes) }, path)
+                && File.ReadAllBytes(path).SequenceEqual(before), "Oversized save destroyed the previous settings");
+            string blockedPath = Path.Combine(directory, "blocked.json");
+            Directory.CreateDirectory(blockedPath);
+            Require(!PreferencesStorage.SavePreferences(preferences, blockedPath)
+                && Directory.Exists(blockedPath) && Directory.GetFiles(directory, "*.tmp").Length == 1,
+                "Failed settings replacement destroyed its destination or leaked a temporary file");
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    private static void CheckUpdateSignatures()
+    {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var wrongKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        string hash = new string('A', 64);
+        const string version = "1.2.0", name = "VBAudioMonitor-1.2.0-full.nupkg";
+        byte[] signature = key.SignData(UpdateProof.Payload(version, name, 123, hash), HashAlgorithmName.SHA256,
+            DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+        string publicKey = key.ExportSubjectPublicKeyInfoPem();
+        Require(UpdateProof.Verify(version, name, 123, hash, signature, publicKey), "Valid update proof was rejected");
+        Require(!UpdateProof.Verify(version, name, 123, hash, signature, wrongKey.ExportSubjectPublicKeyInfoPem())
+            && !UpdateProof.Verify("1.3.0", name, 123, hash, signature, publicKey)
+            && !UpdateProof.Verify(version, "VBAudioMonitor-1.3.0-full.nupkg", 123, hash, signature, publicKey)
+            && !UpdateProof.Verify(version, name, 124, hash, signature, publicKey)
+            && !UpdateProof.Verify(version, name, 123, new string('B', 64), signature, publicKey)
+            && !UpdateProof.Verify(version, name, 123, hash, signature[..63], publicKey),
+            "Wrong key, changed metadata or truncated signature was accepted");
+        signature[0] ^= 1;
+        Require(!UpdateProof.Verify(version, name, 123, hash, signature, publicKey), "Changed signature was accepted");
+        using var pinned = ECDsa.Create();
+        pinned.ImportFromPem(UpdateProof.PublicKey);
+        Require(pinned.KeySize == 256 && !UpdateProof.PublicKey.Contains("PRIVATE"), "Pinned identity is not a public P-256 key");
+        foreach (var asset in new[]
+        {
+            new VelopackAsset { PackageId = "VBAudioMonitor", Version = SemanticVersion.Parse(version), Type = VelopackAssetType.Full, FileName = "../update.nupkg" },
+            new VelopackAsset { PackageId = "Other", Version = SemanticVersion.Parse(version), Type = VelopackAssetType.Full, FileName = name },
+            new VelopackAsset { PackageId = "VBAudioMonitor", Version = SemanticVersion.Parse(version), Type = VelopackAssetType.Delta, FileName = name }
+        })
+        {
+            bool rejected = false;
+            try { SignedUpdateSource.ValidateIdentity(asset); } catch (InvalidDataException) { rejected = true; }
+            Require(rejected, "Path traversal, wrong application or unsigned delta was accepted");
+        }
     }
 
     private static void CheckProfileModels(Preferences preferences)
@@ -610,6 +680,21 @@ internal static class Checks
         }
     }
 
+    private sealed class SignedCheckLocator(string directory)
+        : TestVelopackLocator("VBAudioMonitor", "1.0.0", directory, null, null, Path.Combine(directory, "Update.exe"))
+    {
+        public override IProcessImpl Process { get; } = new NoApplyCheckProcess();
+    }
+
+    private sealed class NoApplyCheckProcess : IProcessImpl
+    {
+        public string GetCurrentProcessPath() => Path.Combine(Environment.CurrentDirectory, "VBAudioMonitor.Check.exe");
+        public uint GetCurrentProcessId() => 0;
+        public void StartProcess(string path, IEnumerable<string> arguments, string directory, bool showWindow) =>
+            throw new InvalidOperationException("Regression checks must never execute the native updater.");
+        public void Exit(int exitCode) => throw new InvalidOperationException("Regression checks must never apply an update.");
+    }
+
     private sealed class UninstalledCheckLocator : TestVelopackLocator
     {
         public UninstalledCheckLocator() : base("VBAudioMonitor.Check", "1.1.0", Environment.CurrentDirectory) { }
@@ -717,29 +802,82 @@ internal static class Checks
         {
             Task.Run(async () =>
             {
-                var locator = new TestVelopackLocator("VBAudioMonitor", "1.0.0", cache);
-                using var updates = new AppUpdates(new UpdateManager(feed, locator: locator));
+                var locator = new SignedCheckLocator(cache);
+                var signedManager = new SignedUpdateManager(locator, feed);
+                using var updates = new AppUpdates(signedManager);
                 await updates.CheckAndDownloadAsync();
                 Require(updates.ReadyToRestart && !updates.IsBusy, "Published package download or verification failed: " + updates.StatusText);
                 var downloaded = Directory.GetFiles(cache, "*.nupkg");
                 Require(downloaded.Length == 1, "Update download did not prepare one full package");
-                using var archive = System.IO.Compression.ZipFile.OpenRead(downloaded[0]);
-                Require(archive.Entries.Any(entry => entry.FullName.EndsWith("/VBAudioMonitor.exe", StringComparison.OrdinalIgnoreCase))
-                    && archive.Entries.All(entry => !entry.FullName.EndsWith("/settings.json", StringComparison.OrdinalIgnoreCase)),
-                    "Update package is missing the executable or includes personal settings");
+                Require(signedManager.UpdatePendingRestart != null, "Verified cached package was not available after restart");
+                string proofPath = downloaded[0] + ".sig";
+                byte[] proof = File.ReadAllBytes(proofPath);
+                File.WriteAllBytes(proofPath, proof[..63]);
+                Require(signedManager.UpdatePendingRestart == null, "Truncated cached signature became installable after restart");
+                bool applyBlocked = false;
+                try { updates.RestartAfterExit(); } catch (InvalidDataException) { applyBlocked = true; }
+                Require(applyBlocked, "Changed cached signature did not block the apply entry point");
+                File.WriteAllBytes(proofPath, proof);
+                File.Delete(proofPath);
+                Require(signedManager.UpdatePendingRestart == null, "Unsigned cached package became installable");
+                File.WriteAllBytes(proofPath, proof);
+                using (var archive = System.IO.Compression.ZipFile.OpenRead(downloaded[0]))
+                {
+                    Require(archive.Entries.Any(entry => entry.FullName.EndsWith("/VBAudioMonitor.exe", StringComparison.OrdinalIgnoreCase))
+                        && archive.Entries.All(entry => !entry.FullName.EndsWith("/settings.json", StringComparison.OrdinalIgnoreCase)),
+                        "Update package is missing the executable or includes personal settings");
+                }
+                using (var tamperCache = new FileStream(downloaded[0], FileMode.Open, FileAccess.ReadWrite))
+                {
+                    int original = tamperCache.ReadByte();
+                    tamperCache.Position = 0; tamperCache.WriteByte((byte)(original ^ 1));
+                    tamperCache.Flush();
+                }
+                Require(signedManager.UpdatePendingRestart == null, "Changed cached package became installable after restart");
+                bool changedPackageBlocked = false;
+                try { updates.RestartAfterExit(); } catch (CryptographicException) { changedPackageBlocked = true; }
+                Require(changedPackageBlocked, "Changed cached package passed the apply gate");
+                using (var restoreCache = new FileStream(downloaded[0], FileMode.Open, FileAccess.ReadWrite))
+                {
+                    int changed = restoreCache.ReadByte();
+                    restoreCache.Position = 0; restoreCache.WriteByte((byte)(changed ^ 1));
+                }
                 string badFeed = Path.Combine(cache, "corrupt-feed"), badCache = Path.Combine(cache, "corrupt-cache");
                 Directory.CreateDirectory(badFeed); Directory.CreateDirectory(badCache);
                 File.Copy(Path.Combine(feed, "releases.win.json"), Path.Combine(badFeed, "releases.win.json"));
+                File.Copy(Path.Combine(feed, Path.GetFileName(downloaded[0]) + ".sig"),
+                    Path.Combine(badFeed, Path.GetFileName(downloaded[0]) + ".sig"));
                 string damaged = Path.Combine(badFeed, Path.GetFileName(downloaded[0]));
                 File.Copy(downloaded[0], damaged);
                 using (var tamper = new FileStream(damaged, FileMode.Open, FileAccess.ReadWrite))
                 {
                     int original = tamper.ReadByte(); tamper.Position = 0; tamper.WriteByte((byte)(original ^ 1));
                 }
-                using var rejected = new AppUpdates(new UpdateManager(badFeed, locator: new TestVelopackLocator("VBAudioMonitor", "1.0.0", badCache)));
+                string updaterPath = Path.Combine(badCache, "Update.exe");
+                File.WriteAllText(updaterPath, "existing updater must remain unchanged");
+                var badLocator = new SignedCheckLocator(badCache);
+                using var rejected = new AppUpdates(new SignedUpdateManager(badLocator, badFeed));
                 await rejected.CheckAndDownloadAsync();
                 Require(!rejected.ReadyToRestart && !rejected.IsBusy && Directory.GetFiles(badCache, "*.nupkg").Length == 0,
                     "A package with a damaged checksum was made installable");
+                Require(File.ReadAllText(updaterPath) == "existing updater must remain unchanged",
+                    "An unauthenticated package replaced the native updater");
+                var forgedFeed = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(badFeed, "releases.win.json")))!;
+                using (var damagedStream = File.OpenRead(damaged))
+                    forgedFeed["Assets"]![0]!["SHA256"] = Convert.ToHexString(SHA256.HashData(damagedStream));
+                File.WriteAllText(Path.Combine(badFeed, "releases.win.json"), forgedFeed.ToJsonString());
+                await rejected.CheckAndDownloadAsync();
+                Require(!rejected.ReadyToRestart && !rejected.IsBusy && Directory.GetFiles(badCache, "*.nupkg").Length == 0,
+                    "Changing the package and feed hash bypassed publisher authentication");
+                string signaturePath = Path.Combine(badFeed, Path.GetFileName(downloaded[0]) + ".sig");
+                File.Delete(signaturePath);
+                await rejected.CheckAndDownloadAsync();
+                Require(!rejected.ReadyToRestart && !rejected.IsBusy, "Missing publisher signature was accepted");
+                File.WriteAllBytes(signaturePath, new byte[65]);
+                await rejected.CheckAndDownloadAsync();
+                Require(!rejected.ReadyToRestart && !rejected.IsBusy, "Oversized publisher signature was accepted");
+                Require(File.ReadAllText(updaterPath) == "existing updater must remain unchanged",
+                    "A forged feed or signature replaced the native updater");
             }).GetAwaiter().GetResult();
         }
         finally

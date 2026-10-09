@@ -1,4 +1,5 @@
 using System.Drawing.Drawing2D;
+using System.ComponentModel;
 
 namespace VBAudioMonitor;
 
@@ -7,8 +8,8 @@ namespace VBAudioMonitor;
 /// </summary>
 internal class Surface : Panel
 {
-    public float CornerRadius { get; set; } = 10f;
-    public bool DrawBorder { get; set; } = true;
+    [DefaultValue(10f)] public float CornerRadius { get; set; } = 10f;
+    [DefaultValue(true)] public bool DrawBorder { get; set; } = true;
 
     public Surface()
     {
